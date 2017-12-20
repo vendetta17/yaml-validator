@@ -67,9 +67,9 @@ class YamlValidator
   end
 
   def validate_yaml(file)
-    filename = file.original_filename
+    filename = file.translation_file.original_filename
     begin
-      yaml_object = YAML.load_file(file.path)
+      yaml_object = YAML.load_file(file.translation_file.path)
     rescue Psych::SyntaxError => e
       return [e.message.sub(/^\([^)]+\)/, filename)]
     end
