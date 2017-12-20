@@ -8,10 +8,11 @@ require_relative './locked_keys'
 
 class YamlValidator
   
-  def initialize(root_path, options = {})
+  def initialize(root_path, custom_path ,options = {})
     @options = options
     @root_path = root_path
     @locked_keys = LockedKeys.new(@root_path) unless @root_path.nil?
+    @custom_path = custom_path
   end
   
   def en
@@ -23,10 +24,26 @@ class YamlValidator
     @en = YAML.load_file(fullpath)['en']
     @en = Helpers.normalize_yaml(@en)
   end
+
+  def custom_lang lang
+    return @custom unless @custom.nil?
+
+    fullpath = File.join(@custom_path, lang.to_s + '.yml')
+    return nil unless File.readable?(fullpath)
+
+    @custom = YAML.load_file(fullpath)
+    @custom = @custom[@custom.keys[0]]
+    @custom = Helpers.normalize_yaml(@custom)
+  end
   
   def en_with_vars
     return nil if en.nil?
     @en_with_vars ||= get_all_variables(en)
+  end
+
+  def custom_with_vars lang
+    return nil if custom_lang(lang).nil?
+    @custom_with_vars ||= get_all_variables(custom_lang(lang))
   end
   
   def validate()
@@ -41,10 +58,16 @@ class YamlValidator
     end
     errors
   end
-  
+
+  def get_en_yaml_object
+    fullpath = File.join(@root_path, 'en.yml')
+    yaml_object = YAML.load_file(fullpath)
+    yaml_object = yaml_object[yaml_object.keys[0]]
+    Helpers.normalize_yaml(yaml_object)
+  end
+
   def validate_yaml(filepath)
     filename = File.basename(filepath)
-    
     begin
       yaml_object = YAML.load_file(filepath)
     rescue Psych::SyntaxError => e
@@ -52,10 +75,11 @@ class YamlValidator
     end
     
     errors = validate_root_language(yaml_object, File.basename(filename))
-
     yaml_object = yaml_object[yaml_object.keys[0]]
     yaml_object = Helpers.normalize_yaml(yaml_object)
     errors += validate_yaml_object('', yaml_object)
+    errors += validate_yaml_object_custom('', get_en_yaml_object, filename.split(".").first)
+
     if @options[:missing]
       errors.concat find_missing_translations(yaml_object)
       errors.concat find_missing_pluralizations(filename, yaml_object)
@@ -64,7 +88,7 @@ class YamlValidator
     if @options[:sanitize]
       errors.concat find_unsanitized_html(filename, yaml_object)
     end
-    
+
     errors.map { |err| "#{filename}: #{err}" }
   end
   
@@ -90,6 +114,22 @@ class YamlValidator
         errors.concat validate_item(full_subkey, value, is_pluralization)
       else
         errors.concat validate_yaml_object(full_subkey, value)
+      end
+    end
+    errors
+  end
+
+  def validate_yaml_object_custom(full_key, yaml_object, language)
+    return [] if yaml_object.nil?
+    errors = []
+    is_pluralization = Helpers.pluralization? yaml_object
+
+    yaml_object.each do |key, value|
+      full_subkey = (full_key.empty?) ? key : "#{full_key}.#{key}"
+      if value.is_a? String
+        errors.concat validate_item_custom(full_subkey, value, is_pluralization, language)
+      else
+        errors.concat validate_yaml_object_custom(full_subkey, value, language)
       end
     end
     errors
@@ -139,6 +179,11 @@ class YamlValidator
     errors = validate_item_vars(full_key, value, is_pluralization)
     errors.concat validate_item_characters(full_key, value)
     errors.concat validate_locked_key(full_key, value)
+    errors
+  end
+
+  def validate_item_custom(full_key, value, is_pluralization = false, language)
+    errors = validate_item_vars_custom(full_key, value, is_pluralization, language)
     errors
   end
 
@@ -204,6 +249,49 @@ class YamlValidator
   
   def get_key_en_vars(full_key)
     position = en_with_vars
+    full_key.split('.').each do |key|
+      return nil if position.is_a? Array
+      return nil if position.nil?
+      position = position[key]
+    end
+    if position.is_a? Array
+      position
+    else
+      nil
+    end
+  end
+
+  def validate_item_vars_custom(full_key, value, is_pluralization = false, language)
+    real_vars = get_key_custom_vars(full_key, language)
+    if real_vars.nil?
+      if is_pluralization
+        return []
+      else
+        return ["#{full_key} doesn't exist in #{language}.yml"]
+      end
+    end
+
+    syntax_error = /(^|[^%]){[^}]+}%?/.match(value)
+    unless syntax_error.nil?
+      return [
+        "#{full_key}: invalid syntax '#{syntax_error}'"
+      ]
+    end
+
+    used_vars = identify_variables(value)
+
+    errors = []
+
+    used_vars.each do |var|
+      unless real_vars.include? var
+        errors << "#{full_key}: missing variable '#{var}' (available options: #{real_vars.join(', ')})"
+      end
+    end
+    errors
+  end
+
+  def get_key_custom_vars(full_key, lang)
+    position = custom_with_vars(lang)
     full_key.split('.').each do |key|
       return nil if position.is_a? Array
       return nil if position.nil?
