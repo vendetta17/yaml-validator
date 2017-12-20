@@ -66,10 +66,10 @@ class YamlValidator
     Helpers.normalize_yaml(yaml_object)
   end
 
-  def validate_yaml(filepath)
-    filename = File.basename(filepath)
+  def validate_yaml(file)
+    filename = file.original_filename
     begin
-      yaml_object = YAML.load_file(filepath)
+      yaml_object = YAML.load_file(file.path)
     rescue Psych::SyntaxError => e
       return [e.message.sub(/^\([^)]+\)/, filename)]
     end
