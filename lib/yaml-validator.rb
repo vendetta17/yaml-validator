@@ -25,7 +25,7 @@ class YamlValidator
     @en = Helpers.normalize_yaml(@en)
   end
 
-  def custom_lang lang
+  def custom_lang lang, file
     return @custom unless @custom.nil?
 
     @custom = YAML.load_file(file.translation_file.path)
@@ -38,9 +38,9 @@ class YamlValidator
     @en_with_vars ||= get_all_variables(en)
   end
 
-  def custom_with_vars lang
-    return nil if custom_lang(lang).nil?
-    @custom_with_vars ||= get_all_variables(custom_lang(lang))
+  def custom_with_vars lang, file
+    return nil if custom_lang(lang, file).nil?
+    @custom_with_vars ||= get_all_variables(custom_lang(lang, file))
   end
   
   def validate()
@@ -75,7 +75,7 @@ class YamlValidator
     yaml_object = yaml_object[yaml_object.keys[0]]
     yaml_object = Helpers.normalize_yaml(yaml_object)
     errors += validate_yaml_object('', yaml_object)
-    errors += validate_yaml_object_custom('', get_en_yaml_object, filename.split(".").first)
+    errors += validate_yaml_object_custom('', get_en_yaml_object, filename.split(".").first, file)
 
     if @options[:missing]
       errors.concat find_missing_translations(yaml_object)
@@ -116,7 +116,7 @@ class YamlValidator
     errors
   end
 
-  def validate_yaml_object_custom(full_key, yaml_object, language)
+  def validate_yaml_object_custom(full_key, yaml_object, language, file)
     return [] if yaml_object.nil?
     errors = []
     is_pluralization = Helpers.pluralization? yaml_object
@@ -124,9 +124,9 @@ class YamlValidator
     yaml_object.each do |key, value|
       full_subkey = (full_key.empty?) ? key : "#{full_key}.#{key}"
       if value.is_a? String
-        errors.concat validate_item_custom(full_subkey, value, is_pluralization, language)
+        errors.concat validate_item_custom(full_subkey, value, is_pluralization, language, file)
       else
-        errors.concat validate_yaml_object_custom(full_subkey, value, language)
+        errors.concat validate_yaml_object_custom(full_subkey, value, language, file)
       end
     end
     errors
@@ -179,8 +179,8 @@ class YamlValidator
     errors
   end
 
-  def validate_item_custom(full_key, value, is_pluralization = false, language)
-    errors = validate_item_vars_custom(full_key, value, is_pluralization, language)
+  def validate_item_custom(full_key, value, is_pluralization = false, language, file)
+    errors = validate_item_vars_custom(full_key, value, is_pluralization, language, file)
     errors
   end
 
@@ -258,8 +258,8 @@ class YamlValidator
     end
   end
 
-  def validate_item_vars_custom(full_key, value, is_pluralization = false, language)
-    real_vars = get_key_custom_vars(full_key, language)
+  def validate_item_vars_custom(full_key, value, is_pluralization = false, language, file)
+    real_vars = get_key_custom_vars(full_key, language, file)
     if real_vars.nil?
       if is_pluralization
         return []
@@ -287,8 +287,8 @@ class YamlValidator
     errors
   end
 
-  def get_key_custom_vars(full_key, lang)
-    position = custom_with_vars(lang)
+  def get_key_custom_vars(full_key, lang, file)
+    position = custom_with_vars(lang, file)
     full_key.split('.').each do |key|
       return nil if position.is_a? Array
       return nil if position.nil?
