@@ -28,10 +28,7 @@ class YamlValidator
   def custom_lang lang
     return @custom unless @custom.nil?
 
-    fullpath = File.join(@custom_path, lang.to_s + '.yml')
-    return nil unless File.readable?(fullpath)
-
-    @custom = YAML.load_file(fullpath)
+    @custom = YAML.load_file(file.translation_file.path)
     @custom = @custom[@custom.keys[0]]
     @custom = Helpers.normalize_yaml(@custom)
   end
