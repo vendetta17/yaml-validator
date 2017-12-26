@@ -13,6 +13,7 @@ class YamlValidator
     @root_path = root_path
     @locked_keys = LockedKeys.new(@root_path) unless @root_path.nil?
     @custom_path = custom_path
+    @custom_yaml_object = nil
   end
   
   def en
@@ -76,7 +77,6 @@ class YamlValidator
     yaml_object = Helpers.normalize_yaml(yaml_object)
     errors += validate_yaml_object('', yaml_object)
     errors += validate_yaml_object_custom('', get_en_yaml_object, filename.split(".").first, file)
-
     if @options[:missing]
       errors.concat find_missing_translations(yaml_object)
       errors.concat find_missing_pluralizations(filename, yaml_object)
@@ -120,7 +120,7 @@ class YamlValidator
     return [] if yaml_object.nil?
     errors = []
     is_pluralization = Helpers.pluralization? yaml_object
-
+    @custom_yaml_object = custom_lang(language, file)
     yaml_object.each do |key, value|
       full_subkey = (full_key.empty?) ? key : "#{full_key}.#{key}"
       if value.is_a? String
@@ -129,6 +129,7 @@ class YamlValidator
         errors.concat validate_yaml_object_custom(full_subkey, value, language, file)
       end
     end
+    rewrite_uploaded_file(@custom_yaml_object, file, language)
     errors
   end
   
@@ -264,6 +265,7 @@ class YamlValidator
       if is_pluralization
         return []
       else
+        @custom_yaml_object = add_missing_keys(full_key.split('.'), @custom_yaml_object)
         return ["#{full_key} doesn't exist in #{language}.yml"]
       end
     end
@@ -325,5 +327,27 @@ class YamlValidator
     language = File.basename(filename, '.*')
     SanitizedHtmlValidator.validate(language, yaml_object)
   end
+
+  def add_missing_keys keys, yaml_object
+    keys.each do |key|
+      if yaml_object.has_key?(key)
+        new_keys = keys
+        new_keys.delete(key)
+        add_missing_keys(new_keys, yaml_object[key])
+      else
+        yaml_object[key] = "ToDo"
+        break
+      end
+    end
+    yaml_object
+  end
+
+  def rewrite_uploaded_file yaml_object, file, language
+    yaml_obj = {}
+    yaml_obj[language] = yaml_object
+    full_path = File.join(@custom_path, file.translation_file.original_filename)
+    File.write(full_path, yaml_obj.to_yaml)
+  end
+
 end
 
