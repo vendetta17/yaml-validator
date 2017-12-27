@@ -335,7 +335,7 @@ class YamlValidator
         new_keys.delete(key)
         add_missing_keys(new_keys, yaml_object[key])
       else
-        yaml_object[key] = "ToDo"
+        yaml_object[key] = nil
         break
       end
     end
